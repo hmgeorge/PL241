@@ -1,0 +1,21 @@
+//class to hold result from an if statement
+public class ReturnStatNode extends StatNode {
+    public ExprNode retNode;
+ 
+    public ReturnStatNode(ExprNode ret ){
+	retNode = ret;
+    }
+
+    public String toString( ){
+	String rstring = "return ";
+	
+	if( retNode != null ){
+	    rstring += retNode.toString( );
+	}
+	return rstring;
+    }
+
+    public int kind( ){
+	return Node.RETURN;
+    }
+}

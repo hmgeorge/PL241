@@ -1,0 +1,847 @@
+//calculates live intervals
+//constructs interference graph
+//does graph coloring.
+//sets register (physical or virtual) for each SSAValue 
+
+import java.util.Hashtable;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.Iterator;
+import java.util.ArrayList;
+
+class Graph {
+    
+    Hashtable<SSAValue, HashSet<SSAValue>> iference_graph;
+
+    Graph( ){
+	iference_graph = new Hashtable<SSAValue, HashSet<SSAValue>>( );
+    }
+    
+    void AddEdge( SSAValue a, SSAValue b ) { // a <---> b 
+
+	if( a == null || b == null ){
+	    throw new Error("Values to AddEdge cannot be null");
+	}
+
+	HashSet<SSAValue> adj_list = iference_graph.get( a );
+	if( adj_list == null ){
+	    adj_list = new HashSet<SSAValue>( );
+	    iference_graph.put( a, adj_list );
+	}
+	adj_list.add( b );
+
+	adj_list = iference_graph.get( b );
+	if( adj_list == null ){
+	    adj_list = new HashSet<SSAValue>( );
+	    iference_graph.put(b, adj_list);
+	}
+	adj_list.add( a );
+
+    }
+
+    //For Remove, dont delete the value .. instead return
+    //the list.. because we need to restore the graph to previous
+    //state.
+    HashSet<SSAValue> Remove( SSAValue node ){
+	
+	HashSet<SSAValue> adj_list = iference_graph.get( node );
+	HashSet<SSAValue> n_adj_list;
+
+	if( adj_list == null ){
+	    adj_list = new HashSet<SSAValue>( );
+	}
+	
+	//for each node in adj_list, remove node from it's adj_list
+	Iterator<SSAValue> it = adj_list.iterator( );
+
+	while( it.hasNext( ) ){
+	    SSAValue n = it.next( );
+	    n_adj_list = iference_graph.get( n );//n_adj_list cannot be null
+	    if( n_adj_list == null ){
+		throw new Error("Adj list cannot be null. it is for " + n );
+	    }
+	    n_adj_list.remove( node );
+	}
+	
+	iference_graph.remove( node );
+	return adj_list;
+    }
+
+    //Add - for graph coloring
+    void Add( SSAValue node, HashSet<SSAValue> adj_list ){
+	//for each node in adj_list, remove node from it's adj_list
+	Iterator<SSAValue> it = adj_list.iterator( );
+	HashSet<SSAValue> n_adj_list = iference_graph.get( node );
+
+	if( n_adj_list == null ){
+	    n_adj_list = new HashSet<SSAValue>( );
+	    iference_graph.put( node, n_adj_list );
+	}
+
+	while( it.hasNext( ) ){
+	    SSAValue n = it.next( );
+	    n_adj_list.add( n );
+	}
+    }
+
+    Set<SSAValue> Nodes( ){
+	return iference_graph.keySet( );
+    }
+
+    HashSet<SSAValue> Edges( SSAValue n ){
+	return iference_graph.get( n );
+    }
+
+    boolean IsEmpty( ){
+	return iference_graph.isEmpty( );
+    }
+}
+
+public class RegAlloc {
+
+    private static Hashtable<BasicBlock,Live> in;
+    private static Hashtable<BasicBlock,Live> out;
+    private static Graph g;
+
+    private static int [ ] Caller_ ={3,4,5,6,7,8,9,10,11,12,13};
+    private static HashSet<Integer> caller_set;
+
+    private static int [ ] Callee_ ={14,15,16,17,18,19,20
+				     ,21,22,23,24,25,26};
+    private static HashSet<Integer> callee_set;
+
+    //1 and 2 are proxy registers used in spill code
+    private static int [ ] SpecialRegs = {0,1,2,27,28,29,30,31};
+
+    private static int NumRegs = 32;
+    private static int virt_reg;
+    private static int N;
+
+    private static HashSet<SSAValue> Call_Ranges;
+    private static Hashtable<BasicBlock, Integer> block_weights;
+    private static Hashtable<SSAValue, Integer> costs;
+
+    private static FuncDetails function;
+
+    static void Do( ParseResult p ){
+
+	Set<String> fnames = p.fdetails.keySet( );
+	Iterator<String> f_iterator = fnames.iterator( );
+
+	while( f_iterator.hasNext( ) ){
+	    String fname = f_iterator.next( );
+	    FuncDetails fdetail = p.fdetails.get( fname );
+	    RegAllocFunction( fdetail );
+	}
+	RegAllocFunction( p.main_fn );
+    }
+
+    //Do 'everything'
+    static void RegAllocFunction( FuncDetails f ) {
+
+	function = f;
+
+	ArrayList<BasicBlock> block_order = Opt.TopSort( f.body );
+
+	BasicBlock enter_block = f.body;
+
+	block_weights = new Hashtable<BasicBlock, Integer>( );
+	costs = new Hashtable<SSAValue, Integer>( );
+
+	in = new Hashtable<BasicBlock,Live>( );
+	out = new Hashtable<BasicBlock,Live>( );
+
+	g = new Graph( );
+
+	Call_Ranges = new HashSet<SSAValue>( ); 
+
+	caller_set = new HashSet<Integer>( );
+	for( int i = 0; i < Caller_.length; i++ ){ 
+	    caller_set.add( Caller_[i] );
+	}
+	
+	callee_set = new HashSet<Integer>( );
+	for( int i = 0; i < Callee_.length; i++ ){
+	    callee_set.add( Callee_[i] );
+	}
+
+	N = NumRegs - SpecialRegs.length;
+	virt_reg = 1;
+
+	in.put( enter_block.GetNext( 1 ), new Live( ) );
+	out.put( enter_block.GetNext( 1), new Live( ) ); //?	
+
+	AssignBlockWeights( enter_block );
+	CalcAllLiveIntervals( block_order );
+	
+	Set<SSAValue> nodes = g.Nodes( );
+	System.out.println( nodes );
+	/*
+	 * Dealing with callee/caller saved registers
+	 * Naive : Save/Restore all
+	 *
+	 * Caller -
+	 * Callee -
+	 * Call-Ranges - A set of temporaries whose 
+	 *               merged live ranges contains atleast one
+	 *               function call
+	 *
+	 * 1) Create new node in interference graph for each R in Caller
+	 * 2) For each variable/temporary v in Call-Range, add an edge
+	 * 3) When doing final assignment of registers to temporaries
+	 *    try to assign caller-save registers. If not possible,
+	 *    assign callee-saved registers and add save/restore stack
+	 *    operations for the register at the entry/exit of the
+	 *    current function
+	 * 
+	 */
+
+	//since there is no definition point for the
+	//parameters of a function (no parameters for main),
+	//they wont be added to the node-set. 
+	//therefore i think we should assign virtual registers
+		
+	ArrayList<SSAValue> fparams = f.GetFParamValues( );
+	for( int i = 0; i < fparams.size( ); i++ ){
+	    fparams.get(i).SetReg( virt_reg++ );
+	    fparams.get(i).SetVirtual( );
+	}
+
+	//Add each element in Caller to the interference graph.
+	//It interferes with all elements in Call_Ranges
+
+	Iterator<Integer> caller_it = caller_set.iterator( );
+
+	while( caller_it.hasNext( ) ){
+	    Integer caller_num = caller_it.next( );
+	    SSAValue caller_val = new SSAValue( caller_num );
+	    caller_val.SetReg( caller_num );
+
+	    Iterator<SSAValue> call_range_it = Call_Ranges.iterator( );
+	    while( call_range_it.hasNext( ) ){
+		SSAValue temp = call_range_it.next( );
+		g.AddEdge( caller_val, temp );
+	    }
+	}
+
+	//what is an appropriate cost function for spilling?
+	//number of accesses of a value _scaled_ by loop nesting depth
+	//done! - one more top sort this time adding weights.
+	
+	ColorGraph( nodes );
+	//CheckRegAlloc( );
+    }
+
+    private static void DFS( BasicBlock block, 
+			     HashSet<BasicBlock> discovered, 
+	                     int weight ){
+	
+	/*
+	 * Do DFS on each of the blocks predecessors, 
+	 * if not discovered already, add to discovered and add to
+	 * blocks. if the node is a loop header, node can be put
+	 * after processing its first previous block,
+	 * loop body comes later.
+	 */
+
+	//System.out.print ("Previous for " + block.GetBlockId( ) + "->" );
+
+        //for( int i = 0; i < block.NumPrev( ); i++ ){
+	//    System.out.print( block.GetPrev(i).GetBlockId( ) + " " );
+	//}
+
+	//System.out.print("\n");
+
+	if( discovered.contains( block ) ){
+	    return;
+	}
+
+	if( block.NumPrev( ) == 0 ){
+	    discovered.add( block );
+	    //System.out.println("Adding block " + block.GetBlockId( ) );
+	    block_weights.put( block, weight );
+	    return;
+	}
+
+	BasicBlock next_block = block.GetPrev( 0 );
+	
+	DFS( next_block, discovered, weight  );
+	
+	if( block.IsLoopHeader( ) ){
+	    discovered.add( block );
+	    //System.out.println("Adding block " + block.GetBlockId( ) );
+	    block_weights.put( block, ++weight );
+	}
+	
+	for( int i = 1; i < block.NumPrev( ); i++ ){
+	    DFS( block.GetPrev(i), discovered, weight );
+	}
+	
+	if( block.IsLoopHeader( ) == false ){
+	    discovered.add( block );
+	    //System.out.println("Adding block " + block.GetBlockId( ) );
+	    block_weights.put( block, weight );
+	}
+
+	return;
+    }
+
+
+    static void AssignBlockWeights( BasicBlock enter_block ){
+
+	HashSet<BasicBlock> discovered = new HashSet<BasicBlock>( );
+	
+	DFS( enter_block.GetNext( 1 ), discovered , 1);
+	
+	Iterator<BasicBlock> b_it = block_weights.keySet( ).iterator( );
+	while( b_it.hasNext( ) ){
+	    BasicBlock b = b_it.next( );
+	    //System.out.println( "Block " + b.GetBlockId( )  + " -> " +
+	    //		"weight = " + block_weights.get( b ) );
+	}
+    }
+
+    static SSAValue ArbitraryNode( Set<SSAValue> nodes, int max_degree ){ 
+                                   //max_degree = -1, => any node
+	SSAValue node = null;
+
+	Iterator<SSAValue> node_it = nodes.iterator( );
+
+	while( node_it.hasNext( ) ){
+	    SSAValue temp = node_it.next( );
+	    HashSet<SSAValue> adj_list = g.Edges( temp );
+	    
+	    if( adj_list.size( ) <= max_degree ){
+		node = temp;
+		break;
+	    }
+	}
+	
+	return node; //note: can be null
+    }
+
+    static void ColorGraph( Set<SSAValue> nodeset ){
+	
+	/*
+         * X = an arbitary node ( in nodeset ) with fewer 
+	 *                              than N neighbours
+	 * 
+	 * if no such node exists 
+	 *    then take the one with the lowest cost
+	 *    //how to take one with lowest cost?
+	 *    spilled = true;        
+	 *  
+	 * remove X and its edges from graph g
+	 * remove X from nodeset;
+	 * 
+	 * if g not empty ( nodeset is empty? => all remaining nodes
+	 *                  are pre-colored nodes )
+	 *    color (remaning graph g)
+         *
+         * add X and its edges back
+         *
+	 * //if x.reg != - 1 
+	 *  //it was precolored
+	 *  //so no need to assign any color
+	 * //else 
+         *
+	 * if spilled == true (no node with fewer than N
+	 *                          exists above )
+	 *    X will be spilled
+	 *
+	 * else
+	 * 
+	 *    choose a color for X from the set of registers
+	 *    that is different from all its neighbours
+	 * 
+         */
+
+	//what about callee/caller saved registers?
+	
+	//R0 - 0
+	//R1 - R13 (caller)
+	//R14 - R26 (callee)
+	//R27 - return value
+	//R28 - frame pointer (ebp)
+	//R29 - stack pointer
+	//R30 - global variables base
+	//R31 - return address (note, must be saved before
+	//                     each function call)
+	
+	boolean spilled = false;
+	Integer spilled_node_cost = -1;
+
+	SSAValue X = ArbitraryNode( nodeset, N - 1 );
+	
+	if( X == null ){
+	    X = MinCostNode( nodeset );
+	    spilled_node_cost = costs.get( X );
+	    spilled = true;
+	    
+	    //there should be memory allocated on the stack 
+	    //for this value? so keep track of that and
+	    //emit code during codegen .
+
+	}
+
+	HashSet<SSAValue> X_adj_list = g.Remove( X );
+	nodeset.remove( X );
+	
+	if( nodeset.isEmpty( ) == false ){ //if false, graph has only 
+	                                   //predefined colors
+	    ColorGraph( nodeset );
+	}
+
+	g.Add( X, X_adj_list );
+	//should we add cost back? i dont think so
+
+
+	if( X.GetReg( ) != -1 ){
+	    //precolored
+	}
+	else if( spilled == true ){
+	    //X assigned a spilled value 
+	    X.SetReg( virt_reg++ );
+	    X.SetVirtual( );
+	    AddVRegCode( function, X );
+	    //IncAllocatedStack( function );
+	}
+	else{
+	    //Assign a physical register 
+	    //check if a caller-save register can be allocated.
+
+	    boolean success = AssignPhyRegister( X, X_adj_list, caller_set );
+
+            //if not, assign a callee-saved register and add push/pop code
+	    //for that register to the start and end of the function
+	    //block
+
+	    if( success ){
+		//these form the registers that have to be saved during
+		//a call
+		AddCallerSRCode( function, X.GetReg( ) );
+	    }	    
+	    else{
+
+		success = AssignPhyRegister( X, X_adj_list, callee_set );
+		
+		if( !success ){
+		    throw new Error("Register Allocation _should_ return" +
+                                     " success with Callee Set Allocation");
+		}
+		AddCalleeSRCode( function, X.GetReg( ) );
+	    }
+	}
+	
+    }
+
+    static boolean AssignPhyRegister( SSAValue X, 
+				      HashSet<SSAValue> X_adj_list,
+				      HashSet<Integer> regs ){
+
+	boolean res = false;
+
+	Iterator<SSAValue> v_it = X_adj_list.iterator( );
+
+	HashSet<Integer> reg_numbers = new HashSet<Integer>( regs );
+	
+	while( v_it.hasNext( ) ){
+	    SSAValue v = v_it.next( );
+	    reg_numbers.remove( v.GetReg( ) );
+	}
+
+	if( reg_numbers.isEmpty( ) ){
+	    res = false;
+	}
+	else{
+	    Iterator<Integer> r_it = reg_numbers.iterator( );
+	    X.SetReg( r_it.next( ) );
+	    res = true;
+	}
+
+	return res;
+    }
+
+    static void AddCalleeSRCode( FuncDetails f, int reg ){
+
+	f.AddCalleeSRCode( reg );	
+    }
+
+    static void AddCallerSRCode( FuncDetails f, int reg ){
+
+	f.AddCallerSRCode( reg );	
+    }
+    
+    static void AddVRegCode( FuncDetails f, SSAValue v ){
+	f.AddVRegCode( v );
+    }
+
+    static SSAValue MinCostNode( Set<SSAValue> nodeset ){
+
+	Iterator<SSAValue> n_it = nodeset.iterator( );
+	SSAValue min_node = null;
+
+	if( n_it.hasNext( ) )
+	    min_node = n_it.next( );
+
+	while( n_it.hasNext( ) ){
+	    SSAValue temp = n_it.next( );
+
+	    if( costs.get( temp ) < costs.get( min_node ) ){
+		min_node = temp;
+	    }
+	}
+	return min_node;
+    }	
+
+    //for each node in interference graph
+    //    for each edge in its adj list
+    //        if same reg allocated to both
+    //           throw error
+    static void CheckRegAlloc( ){
+    
+
+	Set<SSAValue> nodes = g.Nodes( );
+	Iterator<SSAValue> it = nodes.iterator( );
+
+	while( it.hasNext( ) ){
+	    SSAValue v = it.next( );
+
+	    if( v.GetReg( ) == -1 ){
+		throw new Error("Register not assigned to a node" +
+				"in the interference graph");
+	    }
+
+	    HashSet<SSAValue> adj_list = g.Edges( v );
+	    Iterator<SSAValue> e_it = adj_list.iterator( );
+
+	    while( e_it.hasNext( ) ){
+		SSAValue w = e_it.next( );
+		
+		if( v.GetReg( ) == w.GetReg( ) ){
+		
+		    //its an error if both are assigned virtual regs
+		    //or both are assigned physical regs
+		    if( ( v.IsAllocVirtual( ) && w.IsAllocVirtual( ) ) ||
+			( !v.IsAllocVirtual( ) && !w.IsAllocVirtual( ) ) ){
+			
+			System.out.println( v + " and " + w + " assigned same " +
+					    "register" );
+			throw new Error( );
+		    }
+		}
+	    }
+	}
+
+    }
+
+    static void CalcAllLiveIntervals( ArrayList<BasicBlock> block_order ){
+	
+        //calculate in/out live sets in reverse order, starting from
+	//block just before exit_block
+	//for( int i = block_order.size( ) - 2; i >= 0; i-- ){
+	//  BasicBlock b = block_order.get( i );
+	//  LiveIntervals( b ); //calculate and add to tables.
+	                        //also adds values to interference graph
+	//}
+
+	Hashtable<BasicBlock, Integer> loop_iterations = 
+	    new Hashtable<BasicBlock, Integer>( );
+
+	int index = block_order.size( ) - 1;
+	while( index >= 0 ){
+
+	    BasicBlock b = block_order.get( index-- );
+	    LiveIntervals( b );
+	    if( b.IsLoopHeader( ) ){
+		if( loop_iterations.get( b ) == null ){
+		    //means this is the first iteration.. do once more
+		    //at the join back edge block of this loop
+		    loop_iterations.put( b, 1 );
+		    BasicBlock loop_body_block = b.GetPrev( 1 );
+		    index = block_order.indexOf( loop_body_block  );
+		}
+		//else - this is the second time, so nothing to do
+	    }
+	}
+    }
+
+
+    //calculates live intervals in the block and adds to the
+    //in and out sets.
+    static void LiveIntervals( BasicBlock b ){
+	
+	/*
+	   calculate the in sets normally for the normal instructions
+	   for the phis, take them in any order (wont matter) 
+	   and do the same.
+	*/
+
+	// do we insert moves (naive?) or only if the regs allocated
+	// to x1, x2 & x3 different ? 
+	// x3 = phi( x1, x2 ) =>
+	// move Rx1 Rx3 in then block, if Rx1 and Rx3 different
+	// move Rx2 Rx3 in else block, if Rx2 and Rx3 difference
+	//                              note <- will have to create
+	//                              an else block if none exists
+	// for loops
+	// x3 = phi( x1, x2 )
+	// move Rx1 Rx3 in preceding block, if Rx1 and Rx3 different
+	// move Rx2 Rx3 in backedge block, if Rx2 and Rx3 difference
+	//                                 
+	// if any of the phi operands are null, then we dont go an
+	// put a move.. (ps: this requires returns are doing their job
+	// correctly
+
+	/*
+	 * for all instructions (non-phi in reverse order) 
+	 *                                i : op j k do
+	 *     live = live - { i }
+	 *     for all x E live do
+	 *         AddEdge( x, i )
+	 *     endfor
+	 *     live = live + {j,k}
+	 */
+
+	//each block takes the in-set at this point.
+	//, subtracts all phi values from it , adds the
+	// phi operands corresponding to this branch
+	// and puts it as the out-set for the predecessor
+	// branch, unless there is a return in the predecessor
+	// branch, in which case it just puts a { }
+
+	//if b is a loop-header, we have to do two iterations over
+	//the body of the loop and the loop header.
+	//once we reach loop-header, we have to follow the previous
+	//branch to the loop body.. loop body will eventually update
+	//out-set of loop-header..
+
+	/* Single Loop
+           1 - enter
+	   3 - before loop
+	   4 - loop header
+	   5 - if inside loop
+	   7 - then
+	   8 - else
+	   6 - if join
+	   9 - loop follow
+	   2 - exit
+         */
+
+	/* Double Loop
+	   1 - enter
+	   3 - before loop
+	   4 - loop header
+	   5 - loop body before inner loop
+	   6 - inner loop header
+	   7 - if block
+	   9 - then block
+	   10 - else block
+	   8 - if join
+	   11 - inner loop follow (jump to main loop)
+	   12 - outer loop follow
+	   2 - exit
+	 */
+
+	/*
+	 * When calculating live intervals, if a return statement
+	 * is seen, then live out of that block = { } and live in
+	 * calculated as normal .. e.g. if in single loop, 6 has a
+	 * return, 4 wont put live_in + x as out of 6. it will just
+	 * put { } and start next iteration from 6.
+         */
+
+	System.out.println( b.GetBlockId( ) );
+	Live out_l = out.get( b ); //this will be the union of all successors
+
+	//if any instruction operand is a number, dont 
+	//add to the interference graph
+
+	if( out_l == null ){
+	    out_l = new Live( );
+	    out.put(b, out_l );
+	}
+
+	Live l = new Live( );
+	l.addAll( out_l );
+
+	for( int index = b.GetNumInstr( ) - 1; index >= 0; index-- ){
+    	    Instruction instr = b.GetInstruction( index );
+
+	    if( instr.IsDeleted( ) ) continue;
+	    
+	    Opcode ocode = instr.GetOpcode( );
+	    //System.out.println( instr );
+
+	    //there are no move instructions in the IR.
+	    //only instructions that produce a value need
+	    //to be considered.. (i.e, instruction value here is same as
+	    //the destination register
+
+	    //call statements are producing a value.
+	    //check if its working fine...
+
+	    SSAValue i = instr.GetEnclosingValue( );
+	    if( i != null ){
+		l.remove( i );
+		Iterator<SSAValue> live_it = l.iterator( );
+
+		if( live_it.hasNext( ) == false ){
+		    //check if this is a valid operation
+		    //System.out.println( "Adding empty adj_list for" +  i );
+		    g.Add( i, new HashSet<SSAValue>( ) );
+		}
+		else{
+		    while( live_it.hasNext( ) ){
+			SSAValue x = live_it.next( );
+
+		    if ( x.isundefined( ) ) {
+			throw new Error("Use of undefined value");
+		    }
+			g.AddEdge( x, i );
+		    }
+		}
+	    }
+
+	    ArrayList<SSAValue> ops = instr.Operands( );
+	    for( int j = 0; j < ops.size( ); j++ ){
+		SSAValue op = ops.get( j );
+		
+		//System.out.println( "Operand =  " + op
+		    //	    + " Type = " + op.GetSSAValueType( ));
+
+		if( op.GetSSAValueType( ) == Kind.S_INSTR ||
+		    op.GetSSAValueType( ) == Kind.S_MEMADDRESS ||
+		    op.GetSSAValueType( ) == Kind.S_IDENT ){
+		    
+		    l.add( op );
+		    //also addup the cost of using op in b.
+		    AddUseCost( op, b );
+		} //so Kind.S_NUMBER, Kind.S_FUNCTION are ignored.
+	    }
+
+	    //if instr was a call, then add all elements in 
+	    //l at this point to the Call-Ranges.. 
+	    if( ocode == Opcode.call ){
+		Iterator<SSAValue> l_it =  l.iterator( );
+		while( l_it.hasNext( ) ) {
+			Call_Ranges.add( l_it.next( ) );
+		}
+	    }
+	}
+
+	//l now is the in-set for the basic block. 
+	in.put( b, l );
+	//now we have to consider the phi functions
+	//on a return, phi operands become null
+	
+	//so can remove SSAValue p_val, and add operands in 
+	//ArrayList<SSAValue> os *that are not null* as out_sets of
+	//the corresponding predecessors.. null => return in that branch
+
+	//we have only max two phi operands.
+	for( int i = 0; i < b.NumPrev( ); i++ ){
+	    BasicBlock prevblock = b.GetPrev( i );
+
+	    if( prevblock.returnSeen( ) ){
+		//add a { } set to the out set of prevblock
+		Live prev_live = out.get( prevblock );
+
+		if( prev_live == null ){
+		    prev_live = new Live( );
+		    out.put( prevblock, prev_live );
+		}		
+	    }
+	    else{
+		b.InitPhiIterator( );
+		
+		Live temp_live = new Live( );
+		temp_live.addAll( l );
+	
+		while( b.HasMorePhi( ) ){
+		
+		    String phi_name = b.NextPhiName( );
+		    Instruction phi_instr = b.GetPhiInstr( phi_name );
+		    SSAValue phi_value = phi_instr.GetPhiValue( );
+		    temp_live.remove( phi_value );
+		    SSAValue operand = phi_instr.Operands( ).get( i );
+		    
+		    if( operand == null ){
+			throw new Error("NULL value cannot come from" +
+					"branch not having return" );
+		    }
+
+		    //System.out.println( operand + " type = " + 
+		    //operand.GetSSAValueType( ) );
+		   
+		    if( operand.GetSSAValueType( ) == Kind.S_INSTR ||
+			operand.GetSSAValueType( ) == Kind.S_MEMADDRESS ||
+			operand.GetSSAValueType( ) == Kind.S_IDENT ){
+			temp_live.add( operand  );
+
+			//also addup the cost of using op in b.
+			AddUseCost( operand, b );
+		    } //so Kind.S_NUMBER, Kind.S_FUNCTION are ignored.
+		    
+		}
+
+	    //System.out.println( "Updating in set with " + temp_live.set );
+		Live prev_live = out.get( prevblock );
+		
+		if( prev_live == null ){
+		    prev_live = new Live( );
+		    out.put( prevblock, prev_live );
+		}
+
+		prev_live.addAll( temp_live );
+	    }
+	}
+	
+	//change! <- the phi values interfer with all 
+	//other values (phi & non-phi) in the block
+	//this code adds the graph edges for that
+	b.InitPhiIterator( );
+	
+	Live temp_live = new Live( );
+	temp_live.addAll( l );
+
+	while(  b.HasMorePhi( ) ){
+	
+	    String phi_name = b.NextPhiName( );
+	    Instruction phi_instr = b.GetPhiInstr( phi_name );
+	    SSAValue phi_value = phi_instr.GetPhiValue( );
+
+	    temp_live.remove( phi_value );
+		    
+	    Iterator<SSAValue> live_it = temp_live.iterator( );
+	    if( live_it.hasNext( ) == false ){
+		//check if this is a valid operation
+		//System.out.println( "Adding empty adj_list for" +  i );
+		g.Add( phi_value, new HashSet<SSAValue>( ) );
+	    }
+	    else{
+		while( live_it.hasNext( ) ){
+		    SSAValue x = live_it.next( );
+		    
+		    if ( x.isundefined( ) ) {
+			throw new Error("Undefined value reaches phi");
+		    }
+		    
+		    g.AddEdge( x, phi_value );
+		}
+	    }
+	}
+    }
+
+    static void AddUseCost( SSAValue operand,  BasicBlock b ){
+	
+	int weight = block_weights.get( b );
+	Integer accounted = costs.get( operand );
+	
+	if( accounted == null ){
+	    accounted = new Integer( 0 );
+	}
+
+	costs.put( operand, accounted + weight );
+    }
+}

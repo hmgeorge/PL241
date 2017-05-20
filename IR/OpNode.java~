@@ -1,0 +1,31 @@
+//class for operations
+//operations are
+// add, mul, div, sub and logical operators.
+
+public class OpNode extends ExprNode {
+
+    public ExprNode lvalresult;
+    public ExprNode rvalresult;
+    public OpKind operation;
+
+    public OpNode(OpKind o, ExprNode l, ExprNode r ){
+	operation = o;
+	lvalresult = l;
+	rvalresult = r;
+    }
+
+    public String toString( ){
+	String ostring = operation.toString( ) + "\t"; 
+	ostring += lvalresult.toString( ) ;
+	if( rvalresult != null ){
+	    ostring += "\t" + rvalresult.toString( ) + "\n";
+	}
+	
+	return ostring;
+    }
+
+    public int kind( ){
+	return Node.OP;
+    }
+}
+

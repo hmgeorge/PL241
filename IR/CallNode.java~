@@ -1,0 +1,27 @@
+import java.util.ArrayList;
+
+//Node node for a function call.
+public class CallNode extends ExprNode {
+    public IdentNode fname;
+    ArrayList<ExprNode> paramlist;
+
+    public CallNode( IdentNode f, ArrayList<ExprNode> plist ){
+	fname = f;
+	paramlist = plist;
+    }
+
+    public String toString( ) {
+	String cstring = "CALL " + fname.toString( ) + "( ";
+	for( int i = 0; i < paramlist.size( ); i++ ){
+	    ExprNode p = paramlist.get(i);
+	    cstring += p.toString( ) + ", "; //yes an extra comma
+	}
+
+	cstring += ")\n";
+	return cstring;
+    }	
+
+    public int kind( ){
+	return Node.CALLEXPR;
+    }
+}

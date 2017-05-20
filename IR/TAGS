@@ -1,0 +1,121 @@
+
+Node.java,744
+public class Node{Node2,14
+    public static int STATSEQ = 1;STATSEQ4,34
+    public static int STAT = 2;STAT5,69
+    public static int ASSIGN = 3;ASSIGN6,101
+    public static int IF = 4;IF7,135
+    public static int WHILE = 5;WHILE8,165
+    public static int RETURN = 6;RETURN9,198
+    public static int EXPR = 7;EXPR10,232
+    public static int IDENT = 8;IDENT11,264
+    public static int ARRAY = 9;ARRAY12,297
+    public static int NUMBER = 10;NUMBER13,330
+    public static int CALLEXPR = 11;CALLEXPR14,365
+    public static int OP = 12;OP15,402
+    public static int CALLSTAT = 13;CALLSTAT16,433
+    public Node( ){Node18,471
+    public String toString( ){toString22,507
+    public int kind( ){kind26,559
+
+OpNode.java,345
+public class OpNode extends ExprNode {OpNode5,86
+    public ExprNode lvalresult;lvalresult7,126
+    public ExprNode rvalresult;rvalresult8,158
+    public OpKind operation;operation9,190
+    public OpNode(OpKind o, ExprNode l, ExprNode r ){OpNode11,220
+    public String toString( ){toString17,331
+    public int kind( ){kind27,558
+
+CallStatNode.java,246
+public class CallStatNode extends StatNode {CallStatNode5,127
+    public CallNode cnode;cnode6,172
+    public CallStatNode( CallNode cn ){CallStatNode8,200
+    public String toString( ) {toString12,260
+    public int kind( ){kind21,420
+
+IfStatNode.java,357
+public class IfStatNode{IfStatNode2,44
+    public ExprNode    condNode;condNode3,69
+    public StatSeqNode thenNode;thenNode4,102
+    public StatSeqNode elseNode;elseNode5,135
+    public IfStatNode(ExprNode cond, StatSeqNode thn, StatSeqNode els ){IfStatNode7,169
+    public String toString( ){toString13,301
+    public int kind( ){kind26,570
+
+WhileStatNode.java,305
+public class WhileStatNode{WhileStatNode2,44
+    public ExprNode    condNode;condNode3,72
+    public StatSeqNode bodyNode;bodyNode4,105
+    public WhileStatNode(ExprNode cond, StatSeqNode body ){WhileStatNode7,144
+    public String toString( ){toString12,248
+    public int kind( ){kind22,432
+
+AssignStatNode.java,350
+public class AssignStatNode extends StatNode{AssignStatNode2,30
+    ExprNode lvalNode; //<- must be an of array type or ident type. lvalNode4,81
+    ExprNode rvalNode;rvalNode5,150
+    public AssignStatNode( ExprNode lval, ExprNode rval ){AssignStatNode7,174
+    public String toString( ){toString13,393
+    public int kind( ){kind19,544
+
+CallNode.java,308
+public class CallNode extends ExprNode {CallNode4,62
+    public IdentNode fname;fname5,103
+    ArrayList<ExprNode> paramlist;paramlist6,131
+    public CallNode( IdentNode f, ArrayList<ExprNode> plist ){CallNode8,167
+    public String toString( ) {toString13,269
+    public int kind( ){kind24,545
+
+NumNode.java,216
+public class NumNode extends ExprNode {NumNode3,26
+    private Integer num;num5,67
+    public NumNode( Integer i ){NumNode7,97
+    public String toString( ){toString11,147
+    public int kind( ){kind15,209
+
+StatSeqNode.java,302
+public class StatSeqNode extends Node{StatSeqNode4,78
+    public ArrayList<StatNode> sresults;sresults6,118
+    public StatSeqNode( ){StatSeqNode8,160
+    public void AddStatNode( StatNode r ){AddStatNode12,234
+    public String toString( ){toString20,362
+    public int kind( ){kind29,570
+
+StatNode.java,170
+public class StatNode extends Node{StatNode2,38
+    public StatNode( ){StatNode4,75
+    public int kind( ){kind8,107
+    public String toString( ){toString12,199
+
+ArrayNode.java,361
+public class ArrayNode extends ExprNode {ArrayNode5,73
+    private IdentNode arrayName;arrayName7,120
+    private ArrayList<ExprNode>  accessExp; //length of this _should_ beaccessExp8,153
+    public ArrayNode( IdentNode id, ArrayList<ExprNode> accexp ){ArrayNode12,403
+    public String toString( ){toString18,516
+    public int kind( ){kind28,710
+
+OpKind.java,147
+public class OpKind{OpKind1,0
+    int optoken;optoken3,26
+    public OpKind( int t ){OpKind5,44
+    public String toString( ){toString9,93
+
+IdentNode.java,230
+public class IdentNode extends ExprNode {IdentNode3,47
+    private String idname;idname5,90
+    public IdentNode( String id ){IdentNode7,122
+    public String toString( ){toString11,178
+    public int kind( ){kind15,232
+
+ExprNode.java,125
+public class ExprNode extends Node{ExprNode4,79
+    public ExprNode( ){ExprNode6,116
+    public int kind( ){kind10,156
+
+ReturnStatNode.java,200
+public class ReturnStatNode{ReturnStatNode2,44
+    public ExprNode retNode;retNode3,73
+    public ReturnStatNode(ExprNode ret ){ReturnStatNode5,104
+    public String toString( ){toString9,169

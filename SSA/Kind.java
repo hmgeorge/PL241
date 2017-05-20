@@ -1,0 +1,32 @@
+public class Kind{
+
+    public static final int S_IDENT = 1;
+    public static final int S_NUM = 2;
+    public static final int S_INSTR = 3;
+    public static final int S_MEMADDRESS = 4;
+    public static final int S_FUNCTION = 5;
+
+    int optoken;
+
+    public Kind( int t ){
+	optoken = t;
+    }
+
+    public String toString( int i ){
+
+	switch( optoken ){
+	    case S_IDENT:
+		return "identifier";
+	    case S_NUM:
+		return "number";
+	    case S_INSTR:
+		return "instruction";
+	    case S_MEMADDRESS:
+		return "mem_address";
+	    default:
+		break;
+	}
+
+	return "Invalid";
+    }
+}

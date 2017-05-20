@@ -1,0 +1,209 @@
+//class to store an operand used in an SSA form.
+//operand can be an array also
+//but the access numbers must be numbers or identifiers
+
+import java.util.ArrayList;
+import java.util.Iterator;
+
+public class SSAValue{
+
+    //operand can be a variable, constant, or a previous SSA instruction.
+    String name;
+    Integer ssa_subscript;
+
+    Integer num;
+
+    Instruction instr;
+
+    int value_type;
+
+    ArrayList<Instruction> uses;
+
+    int reg; //the register allocated to this SSAValue
+    boolean virtual;
+
+    boolean undefined; //hack
+
+    public SSAValue( Instruction i, int vtype ){
+	 instr = i;
+	 i.SetEnclosingValue( this );
+	 value_type = vtype; //one of INSTR, MEMADDRESS
+	 ssa_subscript = -1;
+	 uses = new ArrayList<Instruction>( );
+	 reg = -1; //this is the register which stores the result of the
+	           //instruction. moves wont be dealt with this reg
+	 virtual = false;
+	 undefined = false;
+    }
+    
+    public SSAValue( String s, int vtype ){
+	name = s;
+	ssa_subscript = 0; //is set later
+	value_type = vtype; //IDENT, or FUNCTION
+	uses = new ArrayList<Instruction>( );
+	reg = -1; //this is the register to which a variable is assigned.
+	          //for moves, the register allocated to the dest.
+	undefined = false;
+    }
+
+    public SSAValue( int i ){
+	name = null;
+	num = i;
+	ssa_subscript = -1; //undefined
+	value_type = Kind.S_NUM;
+	uses = new ArrayList<Instruction>( );
+	reg = -1; //numbers dont need registers
+	          //but using them for caller register holders
+	undefined = false;
+    }
+
+    public void SetSSASubscript( int new_sscript ){
+	if( value_type != Kind.S_IDENT ){
+	    throw new Error("Call of SetSSAVal on non-ident" );
+	}
+
+	ssa_subscript = new_sscript;
+    }
+
+    public int GetSSAValueType( ){
+	return value_type;
+    }
+
+    public int GetSSASubscript(  ) {
+	if( value_type != Kind.S_IDENT ){
+	    throw new Error("Call of GetSSAVal on non-ident" );
+	}
+	return ssa_subscript;
+    }
+
+    public String GetName( ){
+	
+	if( value_type != Kind.S_IDENT &&
+	    value_type != Kind.S_FUNCTION ){
+	    throw new Error("getname called on non-ident");
+	}
+	
+	return name;
+    }
+
+    public int GetNum( ){
+	
+	if( value_type != Kind.S_NUM ){
+	    throw new Error("getnum called on non-num");
+	}
+	
+	return num;
+    }
+
+    public String toString( ){
+	String s = "";
+
+	if( reg != -1 ){
+	    if( virtual ){
+		s += "[VR";
+	    }
+	    else{
+		s += "[R";
+	    }
+		
+	    s += new Integer(reg) + "] ";
+	    //return s;
+	}
+
+	if( value_type == Kind.S_IDENT ){
+	    s += name + ssa_subscript.toString( );
+	}
+	else if( value_type == Kind.S_FUNCTION ){
+	    s = name;
+	}
+	else if( value_type == Kind.S_NUM ){
+	    s = num.toString( );
+	}
+	else if( value_type == Kind.S_INSTR || 
+		 value_type == Kind.S_MEMADDRESS ){
+	        s += "(" + instr.GetValNumber( ) + ")";
+	}
+
+	return s;
+    }
+
+    public Instruction GetInstruction( ){
+	return instr;
+    }
+
+    public boolean IsSame( SSAValue other_value ){
+	if( this.value_type != other_value.value_type )
+	    return false;
+
+	if( this.value_type == Kind.S_NUM ){
+	    return this.num == other_value.num;
+	} 
+	else if( this.value_type == Kind.S_IDENT ){
+	    return (this.name.compareTo( other_value.name ) == 0) && 
+		( this.ssa_subscript == other_value.ssa_subscript );
+	      
+	}
+	else if( this.value_type == Kind.S_INSTR ||
+		 this.value_type == Kind.S_MEMADDRESS ){
+	    return this.instr.GetValNumber( ) == other_value.instr.GetValNumber( );
+	}
+	else if( this.value_type == Kind.S_FUNCTION ){
+	    System.out.println("comparing functions??");
+	}
+
+	return false;
+    }
+
+    public void AddUse( Instruction i ){
+	uses.add( i );
+    }
+
+    public void RemoveUse( Instruction i ){
+	uses.remove( i );
+    }
+    
+    public Iterator<Instruction> use_iterator( ){
+	return uses.iterator( );
+    }
+
+    //not adding a remove function because we are using an iterator,
+    //any modification outside of iterator causes the iterator result
+    //to be undefined.
+
+    public String UsestoString( ) {
+
+	String ustring = this.toString( );
+
+	for( int i = 0; i < uses.size( ); i++ ){
+	    ustring += "\n\t" + uses.get(i).toString( );
+	}
+       
+	return ustring;
+    }
+	
+    public void SetReg( int r ){
+	reg = r;
+    }
+
+    public int GetReg(  ){
+	return reg;
+    }
+
+    public void SetVirtual( ){
+	virtual = true;
+    }
+
+    public boolean IsAllocVirtual( ){
+	return virtual;
+    }
+
+    public boolean isundefined( ){
+	return undefined;
+    }
+    
+    public void setundefined( ){
+	System.out.println("Setting undefined for " + name );
+	undefined=true;
+    }
+    
+}

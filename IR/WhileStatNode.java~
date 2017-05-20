@@ -1,0 +1,25 @@
+//class to hold result from an if statement
+public class WhileStatNode extends StatNode {
+    public ExprNode    condNode;
+    public StatSeqNode bodyNode;
+    
+
+    public WhileStatNode(ExprNode cond, StatSeqNode body ){
+	condNode = cond;
+	bodyNode = body;	
+    }
+
+    public String toString( ){
+	String wstring = "WHILE ";
+
+	wstring += condNode.toString( ) + "DO\n\t";
+	wstring += bodyNode.toString( );
+	wstring += "\nOD\n";
+
+	return wstring;
+    }
+
+    public int kind( ){
+	return Node.WHILE;
+    }
+}

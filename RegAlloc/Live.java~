@@ -1,0 +1,24 @@
+//nothing but a typedef over HashSet
+
+import java.util.HashSet;
+
+public class Live{
+    HashSet<SSAValue> set;
+    
+    public Live( ){
+	set = new HashSet<SSAValue>( );
+    }
+
+    add( SSAValue v ){
+	set.add( v );
+    }
+
+    remove( SSAValue v ){
+	set.remove( v );
+    }
+
+    Iterator<SSAValue> iterator( ){
+	return set.iterator( );
+    }
+
+    

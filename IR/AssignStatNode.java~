@@ -1,0 +1,22 @@
+//assignment statement result
+public class AssignStatNode extends StatNode{
+    
+    ExprNode lvalNode; //<- must be an of array type or ident type. 
+    ExprNode rvalNode;
+
+    public AssignStatNode( ExprNode lval, ExprNode rval ){
+	lvalNode = lval; // lval *must* be of type array or ident..
+	                   // but i thnk it will be taken care of by the parser.
+	rvalNode = rval;
+    }
+
+    public String toString( ){
+	String letstring = "LET ";
+	letstring += lvalNode.toString() + "<- " + rvalNode.toString( );
+	return letstring;
+    }
+
+    public int kind( ){
+	return Node.ASSIGN;
+    }
+}

@@ -1,0 +1,11 @@
+import java.util.Hashset;
+
+public class Dominator{
+
+    public static BasicBlock ClosestCommonDominator( Hashset<BasicBlock> alive_branches ){
+	
+	if( alive_branches.isEmpty() ){
+	    return null;
+	}
+
+	

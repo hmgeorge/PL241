@@ -1,0 +1,27 @@
+warning on use of undefined variables
+globals
+CSE for loads and stores
+caller save/restore for read and write?
+removed the > condition from copy propagate.. safe?
+assigned call statement results to the proxy register 1. safe?
+
+what is the deal with 4 in the DLX emulator? 
+and what is its relation with multiplying the array indices by 4 each time?
+why is it working for arrays even if we dont multiply?
+
+why is checkregalloc giving wrong results at times?
+function cannot return after function why? the second function is getting called
+
+delete propagated boolean in copypropagate. was messing up cases like
+let x <- a;
+return a*a;
+
+Added 		    if ( x.isundefined( ) ) {
+			throw new Error("Use of undefined value");
+		    }
+
+at lines 698 and 826
+
+a register _is_ being assigned to array bases.
+this can be used to preload the array base address.
+at function start
